@@ -151,7 +151,7 @@ Your goal is to help students understand concepts clearly and build their confid
 
         # Create a new model instance with system instruction
         model_with_instruction = genai.GenerativeModel(
-            'gemini-pro',
+            'gemini-2.5-flash',
             system_instruction=system_instruction
         )
         
