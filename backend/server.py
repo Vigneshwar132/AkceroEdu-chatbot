@@ -169,26 +169,32 @@ Your goal is to help students understand concepts clearly and build their confid
 def generate_chat_title(messages: List[dict]) -> str:
     """Generate a meaningful title for the chat using Gemini"""
     try:
-        # Get first few messages to understand the topic
-        conversation_text = ""
-        for msg in messages[:4]:  # First 2 exchanges
-            conversation_text += f"{msg['role']}: {msg['content']}\n"
+        # Get first user message
+        first_message = messages[0]["content"] if messages else ""
         
         model = genai.GenerativeModel('gemini-2.5-flash')
-        prompt = f"""Based on this conversation, generate a short, meaningful title (max 6 words) that captures the main topic:
+        prompt = f"""Extract ONLY the main topic/subject from this question. Return just 1-3 words, nothing else.
 
-{conversation_text}
+Question: "{first_message}"
 
-Return ONLY the title, nothing else. Examples: "Photosynthesis Process", "Pythagoras Theorem Basics", "Triangle Properties"""
+Examples:
+"What is photosynthesis?" → "Photosynthesis"
+"Explain Pythagoras theorem" → "Pythagoras Theorem"
+"How do plants make food?" → "Plant Food Production"
+"What are the properties of triangles?" → "Triangle Properties"
+
+Return ONLY the topic (1-3 words):"""
         
         response = model.generate_content(prompt)
-        title = response.text.strip().replace('"', '').replace("'", "")
-        return title[:60]  # Max 60 chars
+        title = response.text.strip().replace('"', '').replace("'", "").replace("?", "")
+        return title[:50]  # Max 50 chars
         
     except Exception as e:
         logger.error(f"Error generating title: {e}")
-        # Fallback to first message
-        return messages[0]["content"][:50] + "..." if len(messages[0]["content"]) > 50 else messages[0]["content"]
+        # Fallback: extract first few words
+        first_msg = messages[0]["content"] if messages else "New Chat"
+        words = first_msg.replace("?", "").replace("What is", "").replace("Explain", "").strip().split()
+        return " ".join(words[:3]).title()
 
 # ==================== Authentication Routes ====================
 
