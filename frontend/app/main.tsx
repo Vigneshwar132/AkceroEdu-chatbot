@@ -48,6 +48,7 @@ interface Message {
 export default function Main() {
   const { user, token, logout } = useAuth();
   const router = useRouter();
+  const params = useLocalSearchParams();
   const flatListRef = useRef<FlatList>(null);
   
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -61,11 +62,18 @@ export default function Main() {
   const [showNewProjectModal, setShowNewProjectModal] = useState(false);
   const [newProjectName, setNewProjectName] = useState('');
   const [newProjectDesc, setNewProjectDesc] = useState('');
-  const [expandedProjects, setExpandedProjects] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     loadProjects();
     loadAllChats();
+    
+    // Load chat from URL params
+    if (params.chatId) {
+      loadChatMessages(params.chatId as string);
+    }
+    if (params.projectId) {
+      setCurrentProjectId(params.projectId as string);
+    }
   }, []);
 
   useEffect(() => {
