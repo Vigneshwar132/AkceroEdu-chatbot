@@ -10,7 +10,7 @@ export default function Index() {
   useEffect(() => {
     if (!isLoading) {
       if (user) {
-        router.replace('/home');
+        router.replace('/main');
       } else {
         router.replace('/login');
       }
@@ -29,6 +29,6 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#F5F7FA',
+    backgroundColor: '#1E1E1E',
   },
 });
