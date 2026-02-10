@@ -174,7 +174,7 @@ def generate_chat_title(messages: List[dict]) -> str:
         for msg in messages[:4]:  # First 2 exchanges
             conversation_text += f"{msg['role']}: {msg['content']}\n"
         
-        model = genai.GenerativeModel('gemini-pro')
+        model = genai.GenerativeModel('gemini-2.5-flash')
         prompt = f"""Based on this conversation, generate a short, meaningful title (max 6 words) that captures the main topic:
 
 {conversation_text}
