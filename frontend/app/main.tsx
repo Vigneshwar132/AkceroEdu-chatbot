@@ -670,11 +670,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#2C3E50',
   },
-  userClass: {
-    fontSize: 12,
-    color: '#7F8C8D',
-    marginTop: 2,
-  },
   sidebarContent: {
     flex: 1,
     padding: 16,
