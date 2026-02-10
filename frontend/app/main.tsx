@@ -680,46 +680,20 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#2C3E50',
   },
-  projectContainer: {
-    marginBottom: 12,
-  },
-  projectHeader: {
+  projectItem: {
     flexDirection: 'row',
     alignItems: 'center',
     padding: 12,
     backgroundColor: '#F5F7FA',
     borderRadius: 8,
-  },
-  projectIcon: {
-    marginLeft: 8,
-    marginRight: 8,
+    marginBottom: 8,
   },
   projectName: {
     fontSize: 15,
     fontWeight: '600',
     color: '#2C3E50',
     flex: 1,
-  },
-  projectChats: {
-    marginLeft: 16,
-    marginTop: 8,
-  },
-  newProjectChatButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#E3F2FD',
-    padding: 10,
-    borderRadius: 8,
-    marginBottom: 8,
-    width: 36,
-    height: 36,
-  },
-  newProjectChatText: {
-    fontSize: 14,
-    color: '#4A90E2',
-    fontWeight: '600',
-    marginLeft: 6,
+    marginLeft: 12,
   },
   chatItemRow: {
     flexDirection: 'row',
