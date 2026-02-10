@@ -734,10 +734,13 @@ const styles = StyleSheet.create({
   newProjectChatButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 10,
+    justifyContent: 'center',
     backgroundColor: '#E3F2FD',
+    padding: 10,
     borderRadius: 8,
     marginBottom: 8,
+    width: 36,
+    height: 36,
   },
   newProjectChatText: {
     fontSize: 14,
@@ -752,8 +755,6 @@ const styles = StyleSheet.create({
   },
   chatItem: {
     flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
     padding: 10,
     backgroundColor: '#fff',
     borderRadius: 8,
@@ -761,11 +762,18 @@ const styles = StyleSheet.create({
     borderColor: '#E1E8ED',
     marginRight: 8,
   },
+  chatContent: {
+    flex: 1,
+  },
   chatTitle: {
     fontSize: 14,
+    fontWeight: '600',
     color: '#2C3E50',
-    marginLeft: 8,
-    flex: 1,
+    marginBottom: 2,
+  },
+  chatPreview: {
+    fontSize: 12,
+    color: '#7F8C8D',
   },
   deleteButton: {
     padding: 8,
