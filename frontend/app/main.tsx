@@ -345,10 +345,7 @@ export default function Main() {
                 <View style={styles.userAvatar}>
                   <Text style={styles.avatarText}>{user?.username[0].toUpperCase()}</Text>
                 </View>
-                <View>
-                  <Text style={styles.username}>{user?.username}</Text>
-                  <Text style={styles.userClass}>Class {user?.student_class}</Text>
-                </View>
+                <Text style={styles.username}>{user?.username}</Text>
               </View>
               <TouchableOpacity onPress={() => setSidebarOpen(false)}>
                 <Ionicons name="close" size={28} color="#2C3E50" />
