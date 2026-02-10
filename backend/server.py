@@ -150,7 +150,7 @@ Your goal is to help students understand concepts clearly and build their confid
 
         # Create a new model instance with system instruction
         model_with_instruction = genai.GenerativeModel(
-            'gemini-1.5-flash',
+            'gemini-pro',
             system_instruction=system_instruction
         )
         
@@ -164,6 +164,30 @@ Your goal is to help students understand concepts clearly and build their confid
     except Exception as e:
         logger.error(f"Error getting Gemini response: {e}")
         raise HTTPException(status_code=500, detail="Error generating response")
+
+def generate_chat_title(messages: List[dict]) -> str:
+    """Generate a meaningful title for the chat using Gemini"""
+    try:
+        # Get first few messages to understand the topic
+        conversation_text = ""
+        for msg in messages[:4]:  # First 2 exchanges
+            conversation_text += f"{msg['role']}: {msg['content']}\n"
+        
+        model = genai.GenerativeModel('gemini-pro')
+        prompt = f"""Based on this conversation, generate a short, meaningful title (max 6 words) that captures the main topic:
+
+{conversation_text}
+
+Return ONLY the title, nothing else. Examples: "Photosynthesis Process", "Pythagoras Theorem Basics", "Triangle Properties"""
+        
+        response = model.generate_content(prompt)
+        title = response.text.strip().replace('"', '').replace("'", "")
+        return title[:60]  # Max 60 chars
+        
+    except Exception as e:
+        logger.error(f"Error generating title: {e}")
+        # Fallback to first message
+        return messages[0]["content"][:50] + "..." if len(messages[0]["content"]) > 50 else messages[0]["content"]
 
 # ==================== Authentication Routes ====================
 
