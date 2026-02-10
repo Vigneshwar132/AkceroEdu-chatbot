@@ -65,24 +65,24 @@ export default function Register() {
         <View style={styles.header}>
           <Ionicons name="school" size={60} color="#4A90E2" />
           <Text style={styles.title}>Create Account</Text>
-          <Text style={styles.subtitle}>Join EduChat Today</Text>
+          <Text style={styles.subtitle}>Join EduChat</Text>
         </View>
 
         <View style={styles.form}>
           <View style={styles.inputContainer}>
-            <Ionicons name="person-outline" size={20} color="#666" style={styles.inputIcon} />
+            <Ionicons name="person-outline" size={20} color="#888" style={styles.inputIcon} />
             <TextInput
               style={styles.input}
               placeholder="Username"
               value={username}
               onChangeText={setUsername}
               autoCapitalize="none"
-              placeholderTextColor="#999"
+              placeholderTextColor="#666"
             />
           </View>
 
           <View style={styles.inputContainer}>
-            <Ionicons name="mail-outline" size={20} color="#666" style={styles.inputIcon} />
+            <Ionicons name="mail-outline" size={20} color="#888" style={styles.inputIcon} />
             <TextInput
               style={styles.input}
               placeholder="Email (optional)"
@@ -90,12 +90,12 @@ export default function Register() {
               onChangeText={setEmail}
               keyboardType="email-address"
               autoCapitalize="none"
-              placeholderTextColor="#999"
+              placeholderTextColor="#666"
             />
           </View>
 
           <View style={styles.pickerContainer}>
-            <Ionicons name="book-outline" size={20} color="#666" style={styles.inputIcon} />
+            <Ionicons name="book-outline" size={20} color="#888" style={styles.inputIcon} />
             <View style={styles.pickerWrapper}>
               <Text style={styles.pickerLabel}>Class: </Text>
               <Picker
@@ -113,26 +113,26 @@ export default function Register() {
           </View>
 
           <View style={styles.inputContainer}>
-            <Ionicons name="lock-closed-outline" size={20} color="#666" style={styles.inputIcon} />
+            <Ionicons name="lock-closed-outline" size={20} color="#888" style={styles.inputIcon} />
             <TextInput
               style={styles.input}
               placeholder="Password"
               value={password}
               onChangeText={setPassword}
               secureTextEntry
-              placeholderTextColor="#999"
+              placeholderTextColor="#666"
             />
           </View>
 
           <View style={styles.inputContainer}>
-            <Ionicons name="lock-closed-outline" size={20} color="#666" style={styles.inputIcon} />
+            <Ionicons name="lock-closed-outline" size={20} color="#888" style={styles.inputIcon} />
             <TextInput
               style={styles.input}
               placeholder="Confirm Password"
               value={confirmPassword}
               onChangeText={setConfirmPassword}
               secureTextEntry
-              placeholderTextColor="#999"
+              placeholderTextColor="#666"
             />
           </View>
 
@@ -152,7 +152,7 @@ export default function Register() {
             style={styles.linkButton}
             onPress={() => router.back()}
           >
-            <Text style={styles.linkText}>Already have an account? Login</Text>
+            <Text style={styles.linkText}>Already have an account? Sign in</Text>
           </TouchableOpacity>
         </View>
       </ScrollView>
@@ -163,7 +163,7 @@ export default function Register() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F5F7FA',
+    backgroundColor: '#1E1E1E',
   },
   scrollContent: {
     flexGrow: 1,
@@ -177,12 +177,12 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 32,
     fontWeight: 'bold',
-    color: '#2C3E50',
+    color: '#fff',
     marginTop: 16,
   },
   subtitle: {
     fontSize: 16,
-    color: '#7F8C8D',
+    color: '#888',
     marginTop: 8,
   },
   form: {
@@ -191,22 +191,22 @@ const styles = StyleSheet.create({
   inputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#fff',
+    backgroundColor: '#2A2A2A',
     borderRadius: 12,
     marginBottom: 16,
     paddingHorizontal: 16,
     borderWidth: 1,
-    borderColor: '#E1E8ED',
+    borderColor: '#333',
   },
   pickerContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#fff',
+    backgroundColor: '#2A2A2A',
     borderRadius: 12,
     marginBottom: 16,
     paddingLeft: 16,
     borderWidth: 1,
-    borderColor: '#E1E8ED',
+    borderColor: '#333',
   },
   pickerWrapper: {
     flex: 1,
@@ -215,11 +215,12 @@ const styles = StyleSheet.create({
   },
   pickerLabel: {
     fontSize: 16,
-    color: '#2C3E50',
+    color: '#fff',
   },
   picker: {
     flex: 1,
     height: 52,
+    color: '#fff',
   },
   inputIcon: {
     marginRight: 12,
@@ -228,7 +229,7 @@ const styles = StyleSheet.create({
     flex: 1,
     height: 52,
     fontSize: 16,
-    color: '#2C3E50',
+    color: '#fff',
   },
   button: {
     backgroundColor: '#4A90E2',
