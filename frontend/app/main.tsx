@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -47,10 +47,11 @@ interface Message {
 export default function Main() {
   const { user, token, logout } = useAuth();
   const router = useRouter();
+  const flatListRef = useRef<FlatList>(null);
   
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [projects, setProjects] = useState<Project[]>([]);
-  const [chats, setChats] = useState<Chat[]>([]);
+  const [allChats, setAllChats] = useState<Chat[]>([]);
   const [currentChatId, setCurrentChatId] = useState<string | null>(null);
   const [currentProjectId, setCurrentProjectId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -63,8 +64,16 @@ export default function Main() {
 
   useEffect(() => {
     loadProjects();
-    loadChats();
+    loadAllChats();
   }, []);
+
+  useEffect(() => {
+    if (messages.length > 0) {
+      setTimeout(() => {
+        flatListRef.current?.scrollToEnd({ animated: true });
+      }, 100);
+    }
+  }, [messages]);
 
   const loadProjects = async () => {
     try {
@@ -77,15 +86,12 @@ export default function Main() {
     }
   };
 
-  const loadChats = async (projectId?: string) => {
+  const loadAllChats = async () => {
     try {
-      const url = projectId 
-        ? `${API_URL}/chats?project_id=${projectId}`
-        : `${API_URL}/chats`;
-      const response = await axios.get(url, {
+      const response = await axios.get(`${API_URL}/chats`, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      setChats(response.data);
+      setAllChats(response.data);
     } catch (error) {
       console.error('Error loading chats:', error);
     }
@@ -105,9 +111,9 @@ export default function Main() {
     }
   };
 
-  const createNewChat = () => {
+  const createNewChat = (projectId?: string) => {
     setCurrentChatId(null);
-    setCurrentProjectId(null);
+    setCurrentProjectId(projectId || null);
     setMessages([]);
     setSidebarOpen(false);
   };
@@ -146,7 +152,7 @@ export default function Main() {
       
       if (!currentChatId) {
         setCurrentChatId(response.data.chat_id);
-        loadChats(currentProjectId || undefined);
+        loadAllChats();
       }
     } catch (error: any) {
       Alert.alert('Error', error.response?.data?.detail || 'Failed to send message');
@@ -162,7 +168,7 @@ export default function Main() {
     }
 
     try {
-      await axios.post(
+      const response = await axios.post(
         `${API_URL}/projects`,
         {
           name: newProjectName,
@@ -175,6 +181,9 @@ export default function Main() {
       setNewProjectName('');
       setNewProjectDesc('');
       loadProjects();
+      
+      // Auto-open new chat in this project
+      createNewChat(response.data.id);
     } catch (error) {
       Alert.alert('Error', 'Failed to create project');
     }
@@ -194,7 +203,7 @@ export default function Main() {
             if (currentChatId === chatId) {
               createNewChat();
             }
-            loadChats(currentProjectId || undefined);
+            loadAllChats();
           } catch (error) {
             Alert.alert('Error', 'Failed to delete chat');
           }
@@ -223,35 +232,35 @@ export default function Main() {
     Alert.alert('Copied', 'Message copied to clipboard');
   };
 
+  const getChatsForProject = (projectId: string) => {
+    return allChats.filter(chat => chat.project_id === projectId);
+  };
+
+  const getRecentChats = () => {
+    return allChats.filter(chat => !chat.project_id);
+  };
+
   const renderMessage = ({ item }: { item: Message }) => (
-    <View
-      style={[
-        styles.messageBox,
-        item.role === 'user' ? styles.userMessageBox : styles.assistantMessageBox,
-      ]}
-    >
-      <View style={styles.messageHeader}>
-        <View style={styles.avatarContainer}>
-          {item.role === 'user' ? (
-            <View style={[styles.avatar, styles.userAvatar]}>
+    <View style={styles.messageContainer}>
+      <View style={[styles.messageBubble, item.role === 'user' ? styles.userBubble : styles.assistantBubble]}>
+        <View style={styles.messageHeader}>
+          <View style={[styles.avatar, item.role === 'user' ? styles.userAvatar : styles.assistantAvatar]}>
+            {item.role === 'user' ? (
               <Text style={styles.avatarText}>{user?.username[0].toUpperCase()}</Text>
-            </View>
-          ) : (
-            <View style={[styles.avatar, styles.assistantAvatar]}>
-              <Ionicons name="school" size={16} color="#fff" />
-            </View>
-          )}
+            ) : (
+              <Ionicons name="school" size={18} color="#fff" />
+            )}
+          </View>
+          <Text style={styles.roleText}>{item.role === 'user' ? 'You' : 'EduChat'}</Text>
         </View>
-        <Text style={styles.messageContent}>{item.content}</Text>
+        <Text style={styles.messageText}>{item.content}</Text>
+        {item.role === 'assistant' && (
+          <TouchableOpacity style={styles.copyButton} onPress={() => copyToClipboard(item.content)}>
+            <Ionicons name="copy-outline" size={16} color="#4A90E2" />
+            <Text style={styles.copyText}>Copy</Text>
+          </TouchableOpacity>
+        )}
       </View>
-      {item.role === 'assistant' && (
-        <TouchableOpacity
-          style={styles.copyBtn}
-          onPress={() => copyToClipboard(item.content)}
-        >
-          <Ionicons name="copy-outline" size={14} color="#666" />
-        </TouchableOpacity>
-      )}
     </View>
   );
 
@@ -259,28 +268,30 @@ export default function Main() {
     <View style={styles.container}>
       {/* Top Bar */}
       <View style={styles.topBar}>
-        <TouchableOpacity onPress={() => setSidebarOpen(!sidebarOpen)} style={styles.menuBtn}>
-          <Ionicons name="menu" size={24} color="#fff" />
+        <TouchableOpacity onPress={() => setSidebarOpen(true)} style={styles.iconButton}>
+          <Ionicons name="menu" size={24} color="#2C3E50" />
         </TouchableOpacity>
-        <Text style={styles.topBarTitle}>New Chat</Text>
-        <TouchableOpacity onPress={createNewChat} style={styles.newChatBtn}>
-          <Ionicons name="create-outline" size={24} color="#fff" />
+        <Text style={styles.topBarTitle}>EduChat</Text>
+        <TouchableOpacity onPress={() => createNewChat()} style={styles.iconButton}>
+          <Ionicons name="add-circle-outline" size={24} color="#4A90E2" />
         </TouchableOpacity>
       </View>
 
-      {/* Main Chat Area */}
+      {/* Chat Area */}
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={styles.chatArea}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
       >
         {messages.length === 0 ? (
           <View style={styles.emptyState}>
-            <Ionicons name="chatbubbles-outline" size={80} color="#555" />
-            <Text style={styles.emptyTitle}>EduChat</Text>
-            <Text style={styles.emptySubtitle}>Ask me anything about CBSE Maths & Science!</Text>
+            <Ionicons name="chatbubbles-outline" size={80} color="#BDC3C7" />
+            <Text style={styles.emptyTitle}>Welcome to EduChat!</Text>
+            <Text style={styles.emptySubtitle}>Ask me anything about CBSE Maths & Science</Text>
           </View>
         ) : (
           <FlatList
+            ref={flatListRef}
             data={messages}
             renderItem={renderMessage}
             keyExtractor={(item, index) => index.toString()}
@@ -295,47 +306,60 @@ export default function Main() {
               style={styles.input}
               value={inputText}
               onChangeText={setInputText}
-              placeholder="Message EduChat..."
-              placeholderTextColor="#888"
+              placeholder="Ask a question..."
+              placeholderTextColor="#95A5A6"
               multiline
               maxLength={1000}
             />
             <TouchableOpacity
-              style={[styles.sendBtn, (!inputText.trim() || loading) && styles.sendBtnDisabled]}
+              style={[styles.sendButton, (!inputText.trim() || loading) && styles.sendButtonDisabled]}
               onPress={sendMessage}
               disabled={!inputText.trim() || loading}
             >
               {loading ? (
                 <ActivityIndicator size="small" color="#fff" />
               ) : (
-                <Ionicons name="arrow-up" size={20} color="#fff" />
+                <Ionicons name="send" size={20} color="#fff" />
               )}
             </TouchableOpacity>
           </View>
         </View>
       </KeyboardAvoidingView>
 
-      {/* Sidebar */}
+      {/* Sidebar Modal */}
       <Modal
         visible={sidebarOpen}
         animationType="slide"
         transparent={true}
         onRequestClose={() => setSidebarOpen(false)}
       >
-        <View style={styles.sidebarOverlay}>
-          <View style={styles.sidebar}>
+        <TouchableOpacity 
+          style={styles.modalOverlay} 
+          activeOpacity={1} 
+          onPress={() => setSidebarOpen(false)}
+        >
+          <TouchableOpacity activeOpacity={1} style={styles.sidebar} onPress={(e) => e.stopPropagation()}>
+            {/* Sidebar Header */}
             <View style={styles.sidebarHeader}>
+              <View style={styles.userInfo}>
+                <View style={styles.userAvatar}>
+                  <Text style={styles.avatarText}>{user?.username[0].toUpperCase()}</Text>
+                </View>
+                <View>
+                  <Text style={styles.username}>{user?.username}</Text>
+                  <Text style={styles.userClass}>Class {user?.student_class}</Text>
+                </View>
+              </View>
               <TouchableOpacity onPress={() => setSidebarOpen(false)}>
-                <Ionicons name="close" size={24} color="#fff" />
+                <Ionicons name="close" size={28} color="#2C3E50" />
               </TouchableOpacity>
-              <Text style={styles.sidebarTitle}>Menu</Text>
             </View>
 
             <ScrollView style={styles.sidebarContent}>
               {/* New Chat Button */}
-              <TouchableOpacity style={styles.sidebarNewChat} onPress={createNewChat}>
+              <TouchableOpacity style={styles.newChatButton} onPress={() => createNewChat()}>
                 <Ionicons name="add" size={20} color="#fff" />
-                <Text style={styles.sidebarNewChatText}>New Chat</Text>
+                <Text style={styles.newChatText}>New Chat</Text>
               </TouchableOpacity>
 
               {/* Projects Section */}
@@ -343,117 +367,122 @@ export default function Main() {
                 <View style={styles.sectionHeader}>
                   <Text style={styles.sectionTitle}>Projects</Text>
                   <TouchableOpacity onPress={() => setShowNewProjectModal(true)}>
-                    <Ionicons name="add-circle-outline" size={20} color="#888" />
+                    <Ionicons name="add-circle" size={24} color="#4A90E2" />
                   </TouchableOpacity>
                 </View>
 
                 {projects.map(project => (
-                  <View key={project.id}>
+                  <View key={project.id} style={styles.projectContainer}>
                     <TouchableOpacity
-                      style={styles.projectItem}
+                      style={styles.projectHeader}
                       onPress={() => toggleProject(project.id)}
                     >
                       <Ionicons
                         name={expandedProjects.has(project.id) ? 'chevron-down' : 'chevron-forward'}
-                        size={16}
-                        color="#888"
+                        size={20}
+                        color="#7F8C8D"
                       />
+                      <Ionicons name="folder" size={20} color="#F39C12" style={styles.projectIcon} />
                       <Text style={styles.projectName}>{project.name}</Text>
                     </TouchableOpacity>
 
                     {expandedProjects.has(project.id) && (
                       <View style={styles.projectChats}>
-                        {chats
-                          .filter(chat => chat.project_id === project.id)
-                          .map(chat => (
-                            <View key={chat.id} style={styles.chatItemContainer}>
-                              <TouchableOpacity
-                                style={styles.chatItem}
-                                onPress={() => loadChatMessages(chat.id)}
-                              >
-                                <Text style={styles.chatTitle} numberOfLines={1}>
-                                  {chat.title}
-                                </Text>
-                              </TouchableOpacity>
-                              <TouchableOpacity onPress={() => deleteChat(chat.id)}>
-                                <Ionicons name="trash-outline" size={16} color="#666" />
-                              </TouchableOpacity>
-                            </View>
-                          ))}
+                        <TouchableOpacity
+                          style={styles.newProjectChatButton}
+                          onPress={() => createNewChat(project.id)}
+                        >
+                          <Ionicons name="add" size={16} color="#4A90E2" />
+                          <Text style={styles.newProjectChatText}>New Chat</Text>
+                        </TouchableOpacity>
+                        
+                        {getChatsForProject(project.id).map(chat => (
+                          <View key={chat.id} style={styles.chatItemRow}>
+                            <TouchableOpacity
+                              style={styles.chatItem}
+                              onPress={() => loadChatMessages(chat.id)}
+                            >
+                              <Ionicons name="chatbubble-outline" size={16} color="#7F8C8D" />
+                              <Text style={styles.chatTitle} numberOfLines={1}>
+                                {chat.title}
+                              </Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity onPress={() => deleteChat(chat.id)} style={styles.deleteButton}>
+                              <Ionicons name="trash-outline" size={16} color="#E74C3C" />
+                            </TouchableOpacity>
+                          </View>
+                        ))}
                       </View>
                     )}
                   </View>
                 ))}
               </View>
 
-              {/* Recent Chats (without project) */}
-              <View style={styles.section}>
-                <Text style={styles.sectionTitle}>Recent Chats</Text>
-                {chats
-                  .filter(chat => !chat.project_id)
-                  .map(chat => (
-                    <View key={chat.id} style={styles.chatItemContainer}>
+              {/* Recent Chats */}
+              {getRecentChats().length > 0 && (
+                <View style={styles.section}>
+                  <Text style={styles.sectionTitle}>Recent Chats</Text>
+                  {getRecentChats().map(chat => (
+                    <View key={chat.id} style={styles.chatItemRow}>
                       <TouchableOpacity
                         style={styles.chatItem}
                         onPress={() => loadChatMessages(chat.id)}
                       >
+                        <Ionicons name="chatbubble-outline" size={16} color="#7F8C8D" />
                         <Text style={styles.chatTitle} numberOfLines={1}>
                           {chat.title}
                         </Text>
                       </TouchableOpacity>
-                      <TouchableOpacity onPress={() => deleteChat(chat.id)}>
-                        <Ionicons name="trash-outline" size={16} color="#666" />
+                      <TouchableOpacity onPress={() => deleteChat(chat.id)} style={styles.deleteButton}>
+                        <Ionicons name="trash-outline" size={16} color="#E74C3C" />
                       </TouchableOpacity>
                     </View>
                   ))}
-              </View>
+                </View>
+              )}
             </ScrollView>
 
-            {/* User Section */}
-            <View style={styles.userSection}>
-              <View style={styles.userInfo}>
-                <View style={[styles.avatar, styles.userAvatar]}>
-                  <Text style={styles.avatarText}>{user?.username[0].toUpperCase()}</Text>
-                </View>
-                <Text style={styles.username}>{user?.username}</Text>
-              </View>
-              <TouchableOpacity onPress={handleLogout}>
-                <Ionicons name="log-out-outline" size={24} color="#E74C3C" />
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
+            {/* Logout Button */}
+            <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
+              <Ionicons name="log-out-outline" size={20} color="#E74C3C" />
+              <Text style={styles.logoutText}>Logout</Text>
+            </TouchableOpacity>
+          </TouchableOpacity>
+        </TouchableOpacity>
       </Modal>
 
       {/* New Project Modal */}
       <Modal visible={showNewProjectModal} animationType="fade" transparent={true}>
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>New Project</Text>
+        <View style={styles.projectModalOverlay}>
+          <View style={styles.projectModalContent}>
+            <Text style={styles.projectModalTitle}>Create New Project</Text>
             <TextInput
-              style={styles.modalInput}
+              style={styles.projectModalInput}
               placeholder="Project Name (e.g., Geometry)"
-              placeholderTextColor="#888"
+              placeholderTextColor="#95A5A6"
               value={newProjectName}
               onChangeText={setNewProjectName}
             />
             <TextInput
-              style={[styles.modalInput, styles.modalTextArea]}
+              style={[styles.projectModalInput, styles.projectModalTextArea]}
               placeholder="Description (optional)"
-              placeholderTextColor="#888"
+              placeholderTextColor="#95A5A6"
               value={newProjectDesc}
               onChangeText={setNewProjectDesc}
               multiline
             />
-            <View style={styles.modalButtons}>
+            <View style={styles.projectModalButtons}>
               <TouchableOpacity
-                style={[styles.modalBtn, styles.modalCancelBtn]}
+                style={[styles.projectModalButton, styles.cancelButton]}
                 onPress={() => setShowNewProjectModal(false)}
               >
-                <Text style={styles.modalBtnText}>Cancel</Text>
+                <Text style={styles.cancelButtonText}>Cancel</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={[styles.modalBtn, styles.modalCreateBtn]} onPress={createProject}>
-                <Text style={[styles.modalBtnText, { color: '#fff' }]}>Create</Text>
+              <TouchableOpacity
+                style={[styles.projectModalButton, styles.createButton]}
+                onPress={createProject}
+              >
+                <Text style={styles.createButtonText}>Create</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -466,27 +495,29 @@ export default function Main() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#1E1E1E',
+    backgroundColor: '#F5F7FA',
   },
   topBar: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     padding: 16,
-    backgroundColor: '#2A2A2A',
+    backgroundColor: '#fff',
     borderBottomWidth: 1,
-    borderBottomColor: '#333',
+    borderBottomColor: '#E1E8ED',
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
   },
-  menuBtn: {
+  iconButton: {
     padding: 8,
   },
   topBarTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#fff',
-  },
-  newChatBtn: {
-    padding: 8,
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#2C3E50',
   },
   chatArea: {
     flex: 1,
@@ -498,38 +529,50 @@ const styles = StyleSheet.create({
     paddingHorizontal: 40,
   },
   emptyTitle: {
-    fontSize: 32,
+    fontSize: 28,
     fontWeight: 'bold',
-    color: '#fff',
+    color: '#2C3E50',
     marginTop: 24,
   },
   emptySubtitle: {
     fontSize: 16,
-    color: '#888',
+    color: '#7F8C8D',
     marginTop: 12,
     textAlign: 'center',
   },
   messagesList: {
     padding: 16,
   },
-  messageBox: {
-    marginBottom: 24,
+  messageContainer: {
+    marginBottom: 16,
   },
-  userMessageBox: {},
-  assistantMessageBox: {},
+  messageBubble: {
+    padding: 12,
+    borderRadius: 12,
+    maxWidth: '85%',
+  },
+  userBubble: {
+    alignSelf: 'flex-end',
+    backgroundColor: '#E3F2FD',
+  },
+  assistantBubble: {
+    alignSelf: 'flex-start',
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: '#E1E8ED',
+  },
   messageHeader: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
-  },
-  avatarContainer: {
-    marginRight: 12,
+    alignItems: 'center',
+    marginBottom: 8,
   },
   avatar: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
     justifyContent: 'center',
     alignItems: 'center',
+    marginRight: 8,
   },
   userAvatar: {
     backgroundColor: '#4A90E2',
@@ -539,88 +582,109 @@ const styles = StyleSheet.create({
   },
   avatarText: {
     color: '#fff',
-    fontSize: 14,
+    fontSize: 12,
     fontWeight: 'bold',
   },
-  messageContent: {
-    flex: 1,
+  roleText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#2C3E50',
+  },
+  messageText: {
     fontSize: 15,
-    color: '#E0E0E0',
+    color: '#2C3E50',
     lineHeight: 22,
   },
-  copyBtn: {
+  copyButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
     marginTop: 8,
-    marginLeft: 44,
-    padding: 4,
+  },
+  copyText: {
+    fontSize: 12,
+    color: '#4A90E2',
+    marginLeft: 4,
   },
   inputArea: {
     padding: 16,
-    backgroundColor: '#2A2A2A',
+    backgroundColor: '#fff',
     borderTopWidth: 1,
-    borderTopColor: '#333',
+    borderTopColor: '#E1E8ED',
   },
   inputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#3A3A3A',
+    backgroundColor: '#F5F7FA',
     borderRadius: 24,
     paddingHorizontal: 16,
     paddingVertical: 8,
+    borderWidth: 1,
+    borderColor: '#E1E8ED',
   },
   input: {
     flex: 1,
     fontSize: 15,
-    color: '#fff',
+    color: '#2C3E50',
     maxHeight: 100,
   },
-  sendBtn: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+  sendButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     backgroundColor: '#4A90E2',
     justifyContent: 'center',
     alignItems: 'center',
     marginLeft: 8,
   },
-  sendBtnDisabled: {
+  sendButtonDisabled: {
     opacity: 0.4,
   },
-  sidebarOverlay: {
+  modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'flex-start',
   },
   sidebar: {
-    width: '80%',
+    width: '85%',
     height: '100%',
-    backgroundColor: '#2A2A2A',
+    backgroundColor: '#fff',
   },
   sidebarHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 16,
-    backgroundColor: '#1E1E1E',
+    justifyContent: 'space-between',
+    padding: 20,
+    backgroundColor: '#F5F7FA',
     borderBottomWidth: 1,
-    borderBottomColor: '#333',
+    borderBottomColor: '#E1E8ED',
   },
-  sidebarTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#fff',
-    marginLeft: 16,
+  userInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  username: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#2C3E50',
+  },
+  userClass: {
+    fontSize: 12,
+    color: '#7F8C8D',
+    marginTop: 2,
   },
   sidebarContent: {
     flex: 1,
     padding: 16,
   },
-  sidebarNewChat: {
+  newChatButton: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#4A90E2',
-    padding: 12,
-    borderRadius: 8,
+    padding: 14,
+    borderRadius: 12,
     marginBottom: 24,
   },
-  sidebarNewChatText: {
+  newChatText: {
     color: '#fff',
     fontSize: 16,
     fontWeight: '600',
@@ -636,108 +700,143 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   sectionTitle: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#888',
-    textTransform: 'uppercase',
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#2C3E50',
   },
-  projectItem: {
+  projectContainer: {
+    marginBottom: 12,
+  },
+  projectHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 8,
-    marginBottom: 4,
+    padding: 12,
+    backgroundColor: '#F5F7FA',
+    borderRadius: 8,
+  },
+  projectIcon: {
+    marginLeft: 8,
+    marginRight: 8,
   },
   projectName: {
     fontSize: 15,
-    color: '#fff',
-    marginLeft: 8,
+    fontWeight: '600',
+    color: '#2C3E50',
+    flex: 1,
   },
   projectChats: {
-    marginLeft: 24,
+    marginLeft: 16,
+    marginTop: 8,
   },
-  chatItemContainer: {
+  newProjectChatButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 4,
+    padding: 10,
+    backgroundColor: '#E3F2FD',
+    borderRadius: 8,
+    marginBottom: 8,
+  },
+  newProjectChatText: {
+    fontSize: 14,
+    color: '#4A90E2',
+    fontWeight: '600',
+    marginLeft: 6,
+  },
+  chatItemRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
   },
   chatItem: {
     flex: 1,
-    padding: 8,
-    backgroundColor: '#3A3A3A',
-    borderRadius: 6,
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 10,
+    backgroundColor: '#fff',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#E1E8ED',
     marginRight: 8,
   },
   chatTitle: {
     fontSize: 14,
-    color: '#E0E0E0',
-  },
-  userSection: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: 16,
-    backgroundColor: '#1E1E1E',
-    borderTopWidth: 1,
-    borderTopColor: '#333',
-  },
-  userInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  username: {
-    fontSize: 16,
-    color: '#fff',
-    marginLeft: 12,
-  },
-  modalOverlay: {
+    color: '#2C3E50',
+    marginLeft: 8,
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.8)',
+  },
+  deleteButton: {
+    padding: 8,
+  },
+  logoutButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 16,
+    borderTopWidth: 1,
+    borderTopColor: '#E1E8ED',
+  },
+  logoutText: {
+    fontSize: 16,
+    color: '#E74C3C',
+    fontWeight: '600',
+    marginLeft: 8,
+  },
+  projectModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
     justifyContent: 'center',
     alignItems: 'center',
     padding: 20,
   },
-  modalContent: {
+  projectModalContent: {
     width: '100%',
-    backgroundColor: '#2A2A2A',
-    borderRadius: 12,
+    backgroundColor: '#fff',
+    borderRadius: 16,
     padding: 24,
   },
-  modalTitle: {
+  projectModalTitle: {
     fontSize: 20,
     fontWeight: 'bold',
-    color: '#fff',
+    color: '#2C3E50',
     marginBottom: 20,
   },
-  modalInput: {
-    backgroundColor: '#3A3A3A',
-    borderRadius: 8,
-    padding: 12,
+  projectModalInput: {
+    backgroundColor: '#F5F7FA',
+    borderRadius: 12,
+    padding: 14,
     fontSize: 15,
-    color: '#fff',
+    color: '#2C3E50',
     marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#E1E8ED',
   },
-  modalTextArea: {
+  projectModalTextArea: {
     height: 80,
     textAlignVertical: 'top',
   },
-  modalButtons: {
+  projectModalButtons: {
     flexDirection: 'row',
     justifyContent: 'flex-end',
     marginTop: 12,
   },
-  modalBtn: {
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    borderRadius: 8,
+  projectModalButton: {
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 12,
     marginLeft: 12,
   },
-  modalCancelBtn: {
-    backgroundColor: '#555',
+  cancelButton: {
+    backgroundColor: '#E1E8ED',
   },
-  modalCreateBtn: {
+  cancelButtonText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#7F8C8D',
+  },
+  createButton: {
     backgroundColor: '#4A90E2',
   },
-  modalBtnText: {
+  createButtonText: {
     fontSize: 15,
     fontWeight: '600',
     color: '#fff',
