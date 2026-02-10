@@ -442,13 +442,21 @@ async def get_chats(
     
     result = []
     for chat in chats:
+        # Get preview from first user message
+        preview = ""
+        messages = chat.get("messages", [])
+        if messages:
+            first_msg = messages[0]["content"]
+            preview = first_msg[:80] + "..." if len(first_msg) > 80 else first_msg
+        
         result.append({
             "id": str(chat["_id"]),
             "project_id": str(chat["project_id"]) if chat.get("project_id") else None,
             "title": chat["title"],
+            "preview": preview,
             "created_at": chat["created_at"],
             "updated_at": chat["updated_at"],
-            "message_count": len(chat.get("messages", []))
+            "message_count": len(messages)
         })
     
     return result
