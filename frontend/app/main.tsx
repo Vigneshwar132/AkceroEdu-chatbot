@@ -390,8 +390,7 @@ export default function Main() {
                           style={styles.newProjectChatButton}
                           onPress={() => createNewChat(project.id)}
                         >
-                          <Ionicons name="add" size={16} color="#4A90E2" />
-                          <Text style={styles.newProjectChatText}>New Chat</Text>
+                          <Ionicons name="add" size={18} color="#4A90E2" />
                         </TouchableOpacity>
                         
                         {getChatsForProject(project.id).map(chat => (
