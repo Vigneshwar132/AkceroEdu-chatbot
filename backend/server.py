@@ -6,14 +6,14 @@ from motor.motor_asyncio import AsyncIOMotorClient
 import os
 import logging
 from pathlib import Path
-from pydantic import BaseModel, Field, EmailStr
+from pydantic import BaseModel, Field
 from typing import List, Optional
 import uuid
 from datetime import datetime, timedelta
 import bcrypt
 import jwt
-from openai import OpenAI
 from bson import ObjectId
+import google.generativeai as genai
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -23,21 +23,18 @@ mongo_url = os.environ['MONGO_URL']
 client = AsyncIOMotorClient(mongo_url)
 db = client[os.environ['DB_NAME']]
 
-# OpenAI client
-openai_client = OpenAI(api_key=os.environ['OPENAI_API_KEY'])
+# Google Gemini configuration
+genai.configure(api_key=os.environ['GOOGLE_API_KEY'])
+gemini_model = genai.GenerativeModel('gemini-1.5-flash')
 
 # JWT configuration
 SECRET_KEY = os.environ.get('JWT_SECRET_KEY', 'your-secret-key-change-this-in-production')
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_HOURS = 24 * 7  # 7 days
 
-# Create the main app without a prefix
+# Create the main app
 app = FastAPI()
-
-# Create a router with the /api prefix
 api_router = APIRouter(prefix="/api")
-
-# Security
 security = HTTPBearer()
 
 # ==================== Models ====================
@@ -45,7 +42,7 @@ security = HTTPBearer()
 class UserRegister(BaseModel):
     username: str
     password: str
-    student_class: str  # "6", "7", "8", "9", "10"
+    student_class: str
     email: Optional[str] = None
 
 class UserLogin(BaseModel):
@@ -57,6 +54,17 @@ class TokenResponse(BaseModel):
     token_type: str
     user: dict
 
+class ProjectCreate(BaseModel):
+    name: str
+    description: Optional[str] = None
+
+class ProjectResponse(BaseModel):
+    id: str
+    name: str
+    description: Optional[str]
+    created_at: datetime
+    updated_at: datetime
+
 class Message(BaseModel):
     role: str
     content: str
@@ -64,20 +72,17 @@ class Message(BaseModel):
 
 class ChatRequest(BaseModel):
     message: str
-    session_id: Optional[str] = None
+    chat_id: Optional[str] = None
+    project_id: Optional[str] = None
 
 class ChatResponse(BaseModel):
     response: str
-    session_id: str
-    subject: str
-    topic: str
+    chat_id: str
     title: str
 
 class ChatSession(BaseModel):
     id: str
-    user_id: str
-    subject: str
-    topic: str
+    project_id: Optional[str]
     title: str
     created_at: datetime
     updated_at: datetime
@@ -86,33 +91,26 @@ class ChatSession(BaseModel):
 # ==================== Helper Functions ====================
 
 def hash_password(password: str) -> str:
-    """Hash a password using bcrypt"""
     return bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    """Verify a password against its hash"""
     return bcrypt.checkpw(plain_password.encode('utf-8'), hashed_password.encode('utf-8'))
 
 def create_access_token(data: dict) -> str:
-    """Create JWT access token"""
     to_encode = data.copy()
     expire = datetime.utcnow() + timedelta(hours=ACCESS_TOKEN_EXPIRE_HOURS)
     to_encode.update({"exp": expire})
-    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
-    return encoded_jwt
+    return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
 def decode_token(token: str) -> dict:
-    """Decode JWT token"""
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        return payload
+        return jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
     except jwt.ExpiredSignatureError:
         raise HTTPException(status_code=401, detail="Token has expired")
     except jwt.JWTError:
         raise HTTPException(status_code=401, detail="Invalid token")
 
 async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
-    """Get current user from JWT token"""
     token = credentials.credentials
     payload = decode_token(token)
     user_id = payload.get("sub")
@@ -122,54 +120,22 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
     user = await db.users.find_one({"_id": ObjectId(user_id)})
     if user is None:
         raise HTTPException(status_code=401, detail="User not found")
-    
     return user
 
-def categorize_question(question: str) -> dict:
-    """Use GPT to categorize the question into subject and topic"""
+def get_gemini_response(messages: List[dict]) -> str:
+    """Get response from Google Gemini"""
     try:
-        response = openai_client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
-                {
-                    "role": "system",
-                    "content": """You are a classifier for CBSE NCERT questions (Class 6-10).
-                    Analyze the question and return ONLY a JSON object with this exact format:
-                    {"subject": "Maths" or "Science", "topic": "specific topic name", "is_educational": true/false}
-                    
-                    For Maths topics: Algebra, Geometry, Trigonometry, Arithmetic, Mensuration, Statistics, Probability, etc.
-                    For Science topics: Physics, Chemistry, Biology, Light, Electricity, Heat, Motion, etc.
-                    
-                    Set is_educational to false if the question is not related to CBSE NCERT Maths or Science (Class 6-10).
-                    Return ONLY the JSON, no other text."""
-                },
-                {"role": "user", "content": question}
-            ],
-            temperature=0.3,
-            max_tokens=100
-        )
+        # Build conversation history
+        chat_history = []
+        for msg in messages[:-1]:  # All except last message
+            role = "user" if msg["role"] == "user" else "model"
+            chat_history.append({"role": role, "parts": [msg["content"]]})
         
-        result = response.choices[0].message.content.strip()
-        # Parse JSON response
-        import json
-        categorization = json.loads(result)
-        return categorization
-    except Exception as e:
-        logger.error(f"Error categorizing question (using fallback): {e}")
-        # MOCKED fallback categorization based on keywords
-        question_lower = question.lower()
-        if any(keyword in question_lower for keyword in ["pythagoras", "theorem", "triangle", "geometry", "algebra", "equation", "number", "math", "calculation"]):
-            return {"subject": "Maths", "topic": "Geometry", "is_educational": True}
-        elif any(keyword in question_lower for keyword in ["science", "physics", "chemistry", "biology", "light", "electricity", "motion"]):
-            return {"subject": "Science", "topic": "Physics", "is_educational": True}
-        elif any(keyword in question_lower for keyword in ["president", "politics", "country", "capital", "government", "who is"]):
-            return {"subject": "General", "topic": "General Knowledge", "is_educational": False}
-        else:
-            return {"subject": "General", "topic": "General", "is_educational": True}
-
-def get_educational_response(messages: List[dict]) -> str:
-    """Get response from GPT with educational context"""
-    system_prompt = """You are an expert CBSE NCERT tutor for students in classes 6-10, specializing in Mathematics and Science.
+        # Get the last user message
+        last_message = messages[-1]["content"]
+        
+        # System instruction for educational content
+        system_instruction = """You are an expert CBSE NCERT tutor for students in classes 6-10, specializing in Mathematics and Science.
 
 STRICT RULES:
 1. ONLY answer questions related to CBSE NCERT Mathematics and Science curriculum for classes 6-10
@@ -178,105 +144,40 @@ STRICT RULES:
 3. Do NOT answer personal questions, general knowledge, current affairs, or any non-educational topics
 4. Use simple language suitable for students
 5. Provide step-by-step explanations
-6. Include examples from NCERT books when relevant
-7. Be encouraging and supportive
-8. If asked about other subjects or topics, politely redirect to Maths/Science
+6. Be encouraging and supportive
+7. If asked about other subjects or topics, politely redirect to Maths/Science
 
 Your goal is to help students understand concepts clearly and build their confidence in Maths and Science."""
 
-    try:
-        response = openai_client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
-                {"role": "system", "content": system_prompt},
-                *messages
-            ],
-            temperature=0.7,
-            max_tokens=1000
+        # Create a new model instance with system instruction
+        model_with_instruction = genai.GenerativeModel(
+            'gemini-1.5-flash',
+            system_instruction=system_instruction
         )
         
-        return response.choices[0].message.content.strip()
-    except Exception as e:
-        logger.error(f"Error getting GPT response (using fallback): {e}")
+        # Start chat with history
+        chat = model_with_instruction.start_chat(history=chat_history)
         
-        # MOCKED educational responses based on the last user message
-        if messages:
-            last_message = messages[-1]["content"].lower()
-            if "pythagoras" in last_message or "theorem" in last_message:
-                return """The Pythagoras theorem states that in a right-angled triangle, the square of the hypotenuse (the longest side) is equal to the sum of squares of the other two sides.
-
-Formula: a² + b² = c²
-
-Where:
-- c is the hypotenuse
-- a and b are the other two sides
-
-Example: If one side is 3 units and another is 4 units, then:
-3² + 4² = c²
-9 + 16 = c²
-25 = c²
-c = 5 units
-
-This theorem is very useful in solving problems related to triangles and distance calculations!
-
-*Note: This is a MOCKED response due to API limitations.*"""
-            
-            elif any(word in last_message for word in ["formula", "explain", "how"]) and any(word in last_message for word in ["pythagoras", "theorem"]):
-                return """Sure! Let me explain the Pythagoras theorem formula in detail:
-
-The formula is: **a² + b² = c²**
-
-Step-by-step explanation:
-1. 'a' and 'b' are the lengths of the two shorter sides (legs) of a right triangle
-2. 'c' is the length of the longest side (hypotenuse) opposite the right angle
-3. Square each side length and add the squares of the two legs
-4. This sum equals the square of the hypotenuse
-
-Example problem:
-- If a = 6 cm and b = 8 cm
-- Then: 6² + 8² = c²
-- 36 + 64 = c²
-- 100 = c²
-- c = 10 cm
-
-*Note: This is a MOCKED response due to API limitations.*"""
-            
-            elif any(word in last_message for word in ["president", "usa", "america", "politics"]):
-                return "I can only help with CBSE NCERT Mathematics and Science questions for classes 6 to 10. Please ask me something related to your Maths or Science curriculum."
-            
-            else:
-                return """I understand you're asking about this topic. However, due to technical limitations, I can only provide basic assistance right now. 
-
-For detailed explanations of CBSE NCERT Mathematics and Science topics (Classes 6-10), please try asking about:
-- Mathematical theorems (like Pythagoras theorem)
-- Algebraic equations
-- Geometric shapes and properties
-- Physics concepts like motion, light, electricity
-- Chemistry basics
-- Biology fundamentals
-
-*Note: This is a MOCKED response due to API limitations.*"""
-        else:
-            return "Hello! I'm here to help you with CBSE NCERT Mathematics and Science questions for classes 6-10. What would you like to learn about today?"
+        # Send message and get response
+        response = chat.send_message(last_message)
+        return response.text
+        
+    except Exception as e:
+        logger.error(f"Error getting Gemini response: {e}")
+        raise HTTPException(status_code=500, detail="Error generating response")
 
 # ==================== Authentication Routes ====================
 
 @api_router.post("/auth/register", response_model=TokenResponse)
 async def register(user_data: UserRegister):
-    """Register a new user"""
-    # Check if username already exists
     existing_user = await db.users.find_one({"username": user_data.username})
     if existing_user:
         raise HTTPException(status_code=400, detail="Username already exists")
     
-    # Validate class
     if user_data.student_class not in ["6", "7", "8", "9", "10"]:
         raise HTTPException(status_code=400, detail="Class must be between 6 and 10")
     
-    # Hash password
     hashed_pw = hash_password(user_data.password)
-    
-    # Create user document
     user_doc = {
         "username": user_data.username,
         "password": hashed_pw,
@@ -287,8 +188,6 @@ async def register(user_data: UserRegister):
     
     result = await db.users.insert_one(user_doc)
     user_id = str(result.inserted_id)
-    
-    # Create access token
     access_token = create_access_token({"sub": user_id})
     
     return {
@@ -303,7 +202,6 @@ async def register(user_data: UserRegister):
 
 @api_router.post("/auth/login", response_model=TokenResponse)
 async def login(credentials: UserLogin):
-    """Login user"""
     user = await db.users.find_one({"username": credentials.username})
     if not user:
         raise HTTPException(status_code=401, detail="Invalid username or password")
@@ -311,7 +209,6 @@ async def login(credentials: UserLogin):
     if not verify_password(credentials.password, user["password"]):
         raise HTTPException(status_code=401, detail="Invalid username or password")
     
-    # Create access token
     user_id = str(user["_id"])
     access_token = create_access_token({"sub": user_id})
     
@@ -327,7 +224,6 @@ async def login(credentials: UserLogin):
 
 @api_router.get("/auth/me")
 async def get_me(current_user: dict = Depends(get_current_user)):
-    """Get current user info"""
     return {
         "id": str(current_user["_id"]),
         "username": current_user["username"],
@@ -335,46 +231,115 @@ async def get_me(current_user: dict = Depends(get_current_user)):
         "email": current_user.get("email")
     }
 
+# ==================== Project Routes ====================
+
+@api_router.post("/projects", response_model=ProjectResponse)
+async def create_project(project: ProjectCreate, current_user: dict = Depends(get_current_user)):
+    """Create a new project"""
+    user_id = current_user["_id"]
+    
+    project_doc = {
+        "_id": ObjectId(),
+        "user_id": user_id,
+        "name": project.name,
+        "description": project.description,
+        "created_at": datetime.utcnow(),
+        "updated_at": datetime.utcnow()
+    }
+    
+    await db.projects.insert_one(project_doc)
+    
+    return {
+        "id": str(project_doc["_id"]),
+        "name": project_doc["name"],
+        "description": project_doc["description"],
+        "created_at": project_doc["created_at"],
+        "updated_at": project_doc["updated_at"]
+    }
+
+@api_router.get("/projects", response_model=List[ProjectResponse])
+async def get_projects(current_user: dict = Depends(get_current_user)):
+    """Get all projects for current user"""
+    user_id = current_user["_id"]
+    
+    projects = await db.projects.find(
+        {"user_id": user_id}
+    ).sort("updated_at", -1).to_list(1000)
+    
+    result = []
+    for project in projects:
+        result.append({
+            "id": str(project["_id"]),
+            "name": project["name"],
+            "description": project.get("description"),
+            "created_at": project["created_at"],
+            "updated_at": project["updated_at"]
+        })
+    
+    return result
+
+@api_router.put("/projects/{project_id}")
+async def update_project(
+    project_id: str,
+    project: ProjectCreate,
+    current_user: dict = Depends(get_current_user)
+):
+    """Update a project"""
+    user_id = str(current_user["_id"])
+    
+    existing_project = await db.projects.find_one({"_id": ObjectId(project_id)})
+    if not existing_project or str(existing_project["user_id"]) != user_id:
+        raise HTTPException(status_code=404, detail="Project not found")
+    
+    await db.projects.update_one(
+        {"_id": ObjectId(project_id)},
+        {"$set": {
+            "name": project.name,
+            "description": project.description,
+            "updated_at": datetime.utcnow()
+        }}
+    )
+    
+    return {"message": "Project updated successfully"}
+
+@api_router.delete("/projects/{project_id}")
+async def delete_project(project_id: str, current_user: dict = Depends(get_current_user)):
+    """Delete a project and all its chats"""
+    user_id = str(current_user["_id"])
+    
+    project = await db.projects.find_one({"_id": ObjectId(project_id)})
+    if not project or str(project["user_id"]) != user_id:
+        raise HTTPException(status_code=404, detail="Project not found")
+    
+    # Delete all chats in this project
+    await db.chat_sessions.delete_many({"project_id": ObjectId(project_id)})
+    
+    # Delete the project
+    await db.projects.delete_one({"_id": ObjectId(project_id)})
+    
+    return {"message": "Project and associated chats deleted successfully"}
+
 # ==================== Chat Routes ====================
 
 @api_router.post("/chat", response_model=ChatResponse)
 async def chat(chat_request: ChatRequest, current_user: dict = Depends(get_current_user)):
     """Send a message and get response"""
-    user_id = str(current_user["_id"])
+    user_id = current_user["_id"]
     
-    # Categorize the question
-    categorization = categorize_question(chat_request.message)
-    
-    # Check if it's an educational question
-    if not categorization.get("is_educational", True):
-        return {
-            "response": "I can only help with CBSE NCERT Mathematics and Science questions for classes 6 to 10. Please ask me something related to your Maths or Science curriculum.",
-            "session_id": chat_request.session_id or str(uuid.uuid4()),
-            "subject": "General",
-            "topic": "General",
-            "title": "Non-educational query"
-        }
-    
-    subject = categorization.get("subject", "General")
-    topic = categorization.get("topic", "General")
-    
-    # Get or create session
-    if chat_request.session_id:
-        session = await db.chat_sessions.find_one({"_id": ObjectId(chat_request.session_id)})
-        if not session or str(session["user_id"]) != user_id:
-            raise HTTPException(status_code=404, detail="Session not found")
-        
+    # Get or create chat session
+    if chat_request.chat_id:
+        session = await db.chat_sessions.find_one({"_id": ObjectId(chat_request.chat_id)})
+        if not session or session["user_id"] != user_id:
+            raise HTTPException(status_code=404, detail="Chat not found")
         messages = session.get("messages", [])
     else:
-        # Create new session
-        session_id = str(uuid.uuid4())
+        # Create new chat session
         title = chat_request.message[:50] + "..." if len(chat_request.message) > 50 else chat_request.message
         
         session = {
             "_id": ObjectId(),
-            "user_id": ObjectId(user_id),
-            "subject": subject,
-            "topic": topic,
+            "user_id": user_id,
+            "project_id": ObjectId(chat_request.project_id) if chat_request.project_id else None,
             "title": title,
             "created_at": datetime.utcnow(),
             "updated_at": datetime.utcnow(),
@@ -390,11 +355,11 @@ async def chat(chat_request: ChatRequest, current_user: dict = Depends(get_curre
     }
     messages.append(user_message)
     
-    # Prepare messages for GPT (without timestamps)
-    gpt_messages = [{"role": msg["role"], "content": msg["content"]} for msg in messages]
+    # Prepare messages for Gemini (without timestamps)
+    gemini_messages = [{"role": msg["role"], "content": msg["content"]} for msg in messages]
     
-    # Get response from GPT
-    assistant_response = get_educational_response(gpt_messages)
+    # Get response from Gemini
+    assistant_response = get_gemini_response(gemini_messages)
     
     # Add assistant message
     assistant_message = {
@@ -408,97 +373,115 @@ async def chat(chat_request: ChatRequest, current_user: dict = Depends(get_curre
     session["messages"] = messages
     session["updated_at"] = datetime.utcnow()
     
-    if chat_request.session_id:
+    if chat_request.chat_id:
         await db.chat_sessions.update_one(
-            {"_id": ObjectId(chat_request.session_id)},
+            {"_id": ObjectId(chat_request.chat_id)},
             {"$set": {"messages": messages, "updated_at": datetime.utcnow()}}
         )
-        session_id = chat_request.session_id
+        chat_id = chat_request.chat_id
     else:
         await db.chat_sessions.insert_one(session)
-        session_id = str(session["_id"])
+        chat_id = str(session["_id"])
     
     return {
         "response": assistant_response,
-        "session_id": session_id,
-        "subject": subject,
-        "topic": topic,
+        "chat_id": chat_id,
         "title": session["title"]
     }
 
-@api_router.get("/chat/history", response_model=List[ChatSession])
-async def get_chat_history(current_user: dict = Depends(get_current_user)):
-    """Get all chat sessions for current user"""
+@api_router.get("/chats", response_model=List[ChatSession])
+async def get_chats(
+    project_id: Optional[str] = None,
+    current_user: dict = Depends(get_current_user)
+):
+    """Get all chats, optionally filtered by project"""
     user_id = current_user["_id"]
     
-    sessions = await db.chat_sessions.find(
-        {"user_id": user_id}
-    ).sort("updated_at", -1).to_list(1000)
+    query = {"user_id": user_id}
+    if project_id:
+        query["project_id"] = ObjectId(project_id)
+    else:
+        # Get chats not in any project
+        query["project_id"] = None
+    
+    chats = await db.chat_sessions.find(query).sort("updated_at", -1).to_list(1000)
     
     result = []
-    for session in sessions:
+    for chat in chats:
         result.append({
-            "id": str(session["_id"]),
-            "user_id": str(session["user_id"]),
-            "subject": session["subject"],
-            "topic": session["topic"],
-            "title": session["title"],
-            "created_at": session["created_at"],
-            "updated_at": session["updated_at"],
-            "message_count": len(session.get("messages", []))
+            "id": str(chat["_id"]),
+            "project_id": str(chat["project_id"]) if chat.get("project_id") else None,
+            "title": chat["title"],
+            "created_at": chat["created_at"],
+            "updated_at": chat["updated_at"],
+            "message_count": len(chat.get("messages", []))
         })
     
     return result
 
-@api_router.get("/chat/session/{session_id}")
-async def get_chat_session(session_id: str, current_user: dict = Depends(get_current_user)):
-    """Get a specific chat session with all messages"""
-    user_id = str(current_user["_id"])
+@api_router.get("/chats/{chat_id}")
+async def get_chat(chat_id: str, current_user: dict = Depends(get_current_user)):
+    """Get a specific chat with all messages"""
+    user_id = current_user["_id"]
     
-    session = await db.chat_sessions.find_one({"_id": ObjectId(session_id)})
-    if not session:
-        raise HTTPException(status_code=404, detail="Session not found")
-    
-    if str(session["user_id"]) != user_id:
-        raise HTTPException(status_code=403, detail="Access denied")
+    chat = await db.chat_sessions.find_one({"_id": ObjectId(chat_id)})
+    if not chat or chat["user_id"] != user_id:
+        raise HTTPException(status_code=404, detail="Chat not found")
     
     return {
-        "id": str(session["_id"]),
-        "subject": session["subject"],
-        "topic": session["topic"],
-        "title": session["title"],
-        "created_at": session["created_at"],
-        "updated_at": session["updated_at"],
-        "messages": session.get("messages", [])
+        "id": str(chat["_id"]),
+        "project_id": str(chat["project_id"]) if chat.get("project_id") else None,
+        "title": chat["title"],
+        "created_at": chat["created_at"],
+        "updated_at": chat["updated_at"],
+        "messages": chat.get("messages", [])
     }
 
-@api_router.delete("/chat/session/{session_id}")
-async def delete_chat_session(session_id: str, current_user: dict = Depends(get_current_user)):
-    """Delete a chat session"""
-    user_id = str(current_user["_id"])
+@api_router.delete("/chats/{chat_id}")
+async def delete_chat(chat_id: str, current_user: dict = Depends(get_current_user)):
+    """Delete a chat"""
+    user_id = current_user["_id"]
     
-    session = await db.chat_sessions.find_one({"_id": ObjectId(session_id)})
-    if not session:
-        raise HTTPException(status_code=404, detail="Session not found")
+    chat = await db.chat_sessions.find_one({"_id": ObjectId(chat_id)})
+    if not chat or chat["user_id"] != user_id:
+        raise HTTPException(status_code=404, detail="Chat not found")
     
-    if str(session["user_id"]) != user_id:
-        raise HTTPException(status_code=403, detail="Access denied")
+    await db.chat_sessions.delete_one({"_id": ObjectId(chat_id)})
+    return {"message": "Chat deleted successfully"}
+
+@api_router.put("/chats/{chat_id}/move")
+async def move_chat_to_project(
+    chat_id: str,
+    project_id: Optional[str] = None,
+    current_user: dict = Depends(get_current_user)
+):
+    """Move a chat to a different project or remove from project"""
+    user_id = current_user["_id"]
     
-    await db.chat_sessions.delete_one({"_id": ObjectId(session_id)})
+    chat = await db.chat_sessions.find_one({"_id": ObjectId(chat_id)})
+    if not chat or chat["user_id"] != user_id:
+        raise HTTPException(status_code=404, detail="Chat not found")
     
-    return {"message": "Session deleted successfully"}
+    new_project_id = ObjectId(project_id) if project_id else None
+    
+    await db.chat_sessions.update_one(
+        {"_id": ObjectId(chat_id)},
+        {"$set": {"project_id": new_project_id, "updated_at": datetime.utcnow()}}
+    )
+    
+    return {"message": "Chat moved successfully"}
 
 # ==================== Health Check ====================
 
 @api_router.get("/")
 async def root():
-    return {"message": "Educational Chatbot API", "status": "active"}
+    return {"message": "Educational Chatbot API with Projects", "status": "active"}
 
 @api_router.get("/health")
 async def health_check():
     return {"status": "healthy", "timestamp": datetime.utcnow()}
 
-# Include the router in the main app
+# Include router
 app.include_router(api_router)
 
 app.add_middleware(
