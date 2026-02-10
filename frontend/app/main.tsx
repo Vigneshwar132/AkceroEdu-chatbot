@@ -33,6 +33,7 @@ interface Chat {
   id: string;
   project_id?: string;
   title: string;
+  preview?: string;
   created_at: string;
   updated_at: string;
   message_count: number;
