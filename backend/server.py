@@ -396,10 +396,20 @@ async def chat(chat_request: ChatRequest, current_user: dict = Depends(get_curre
     session["messages"] = messages
     session["updated_at"] = datetime.utcnow()
     
+    # Auto-generate title after 2nd message (first response)
+    if len(messages) == 2 and not chat_request.chat_id:
+        new_title = generate_chat_title(messages)
+        session["title"] = new_title
+    
     if chat_request.chat_id:
+        update_data = {"messages": messages, "updated_at": datetime.utcnow()}
+        # Update title if it's the second message
+        if len(messages) == 2:
+            update_data["title"] = generate_chat_title(messages)
+        
         await db.chat_sessions.update_one(
             {"_id": ObjectId(chat_request.chat_id)},
-            {"$set": {"messages": messages, "updated_at": datetime.utcnow()}}
+            {"$set": update_data}
         )
         chat_id = chat_request.chat_id
     else:
