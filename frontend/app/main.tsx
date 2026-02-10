@@ -400,10 +400,16 @@ export default function Main() {
                               style={styles.chatItem}
                               onPress={() => loadChatMessages(chat.id)}
                             >
-                              <Ionicons name="chatbubble-outline" size={16} color="#7F8C8D" />
-                              <Text style={styles.chatTitle} numberOfLines={1}>
-                                {chat.title}
-                              </Text>
+                              <View style={styles.chatContent}>
+                                <Text style={styles.chatTitle} numberOfLines={1}>
+                                  {chat.title}
+                                </Text>
+                                {chat.preview && (
+                                  <Text style={styles.chatPreview} numberOfLines={1}>
+                                    {chat.preview}
+                                  </Text>
+                                )}
+                              </View>
                             </TouchableOpacity>
                             <TouchableOpacity onPress={() => deleteChat(chat.id)} style={styles.deleteButton}>
                               <Ionicons name="trash-outline" size={16} color="#E74C3C" />
