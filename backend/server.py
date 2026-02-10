@@ -83,6 +83,7 @@ class ChatSession(BaseModel):
     id: str
     project_id: Optional[str]
     title: str
+    preview: Optional[str] = None  # First message preview
     created_at: datetime
     updated_at: datetime
     message_count: int
