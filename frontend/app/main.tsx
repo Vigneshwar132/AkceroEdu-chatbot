@@ -365,54 +365,18 @@ export default function Main() {
                 </View>
 
                 {projects.map(project => (
-                  <View key={project.id} style={styles.projectContainer}>
-                    <TouchableOpacity
-                      style={styles.projectHeader}
-                      onPress={() => toggleProject(project.id)}
-                    >
-                      <Ionicons
-                        name={expandedProjects.has(project.id) ? 'chevron-down' : 'chevron-forward'}
-                        size={20}
-                        color="#7F8C8D"
-                      />
-                      <Ionicons name="folder" size={20} color="#F39C12" style={styles.projectIcon} />
-                      <Text style={styles.projectName}>{project.name}</Text>
-                    </TouchableOpacity>
-
-                    {expandedProjects.has(project.id) && (
-                      <View style={styles.projectChats}>
-                        <TouchableOpacity
-                          style={styles.newProjectChatButton}
-                          onPress={() => createNewChat(project.id)}
-                        >
-                          <Ionicons name="add" size={18} color="#4A90E2" />
-                        </TouchableOpacity>
-                        
-                        {getChatsForProject(project.id).map(chat => (
-                          <View key={chat.id} style={styles.chatItemRow}>
-                            <TouchableOpacity
-                              style={styles.chatItem}
-                              onPress={() => loadChatMessages(chat.id)}
-                            >
-                              <View style={styles.chatContent}>
-                                <Text style={styles.chatTitle} numberOfLines={1}>
-                                  {chat.title}
-                                </Text>
-                                {chat.preview && (
-                                  <Text style={styles.chatPreview} numberOfLines={1}>
-                                    {chat.preview}
-                                  </Text>
-                                )}
-                              </View>
-                            </TouchableOpacity>
-                            <TouchableOpacity onPress={() => deleteChat(chat.id)} style={styles.deleteButton}>
-                              <Ionicons name="trash-outline" size={16} color="#E74C3C" />
-                            </TouchableOpacity>
-                          </View>
-                        ))}
-                      </View>
-                    )}
-                  </View>
+                  <TouchableOpacity
+                    key={project.id}
+                    style={styles.projectItem}
+                    onPress={() => {
+                      setSidebarOpen(false);
+                      router.push(`/project/${project.id}`);
+                    }}
+                  >
+                    <Ionicons name="folder" size={20} color="#F39C12" />
+                    <Text style={styles.projectName}>{project.name}</Text>
+                    <Ionicons name="chevron-forward" size={18} color="#95A5A6" style={{ marginLeft: 'auto' }} />
+                  </TouchableOpacity>
                 ))}
               </View>
 
