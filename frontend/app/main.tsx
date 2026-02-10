@@ -138,6 +138,14 @@ export default function Main() {
 
     setMessages(prev => [...prev, userMsg]);
     setInputText('');
+    
+    // Add "Thinking..." message
+    const thinkingMsg: Message = {
+      role: 'assistant',
+      content: 'Thinking...',
+      timestamp: new Date().toISOString(),
+    };
+    setMessages(prev => [...prev, thinkingMsg]);
     setLoading(true);
 
     try {
@@ -157,13 +165,16 @@ export default function Main() {
         timestamp: new Date().toISOString(),
       };
 
-      setMessages(prev => [...prev, assistantMsg]);
+      // Remove thinking message and add actual response
+      setMessages(prev => prev.slice(0, -1).concat(assistantMsg));
       
       if (!currentChatId) {
         setCurrentChatId(response.data.chat_id);
         loadAllChats();
       }
     } catch (error: any) {
+      // Remove thinking message on error
+      setMessages(prev => prev.slice(0, -1));
       Alert.alert('Error', error.response?.data?.detail || 'Failed to send message');
     } finally {
       setLoading(false);
