@@ -171,7 +171,7 @@ export default function History() {
         contentContainerStyle={styles.listContent}
         refreshing={refreshing}
         onRefresh={onRefresh}
-        ListEmptyComponent=(
+        ListEmptyComponent={
           <View style={styles.emptyContainer}>
             <Ionicons name="time-outline" size={64} color="#BDC3C7" />
             <Text style={styles.emptyText}>No chat history yet</Text>
@@ -183,7 +183,7 @@ export default function History() {
               <Text style={styles.newChatButtonText}>Start Chatting</Text>
             </TouchableOpacity>
           </View>
-        )
+        }
       />
     </SafeAreaView>
   );
