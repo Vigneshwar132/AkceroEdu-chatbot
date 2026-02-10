@@ -342,12 +342,7 @@ export default function Main() {
           <TouchableOpacity activeOpacity={1} style={styles.sidebar} onPress={(e) => e.stopPropagation()}>
             {/* Sidebar Header */}
             <View style={styles.sidebarHeader}>
-              <View style={styles.userInfo}>
-                <View style={styles.userAvatar}>
-                  <Text style={styles.avatarText}>{user?.username[0].toUpperCase()}</Text>
-                </View>
-                <Text style={styles.username}>{user?.username}</Text>
-              </View>
+              <Text style={styles.username}>{user?.username}</Text>
               <TouchableOpacity onPress={() => setSidebarOpen(false)}>
                 <Ionicons name="close" size={28} color="#2C3E50" />
               </TouchableOpacity>
